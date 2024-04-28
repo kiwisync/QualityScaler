@@ -1,14 +1,11 @@
 #AI
-onnx
-onnxoptimizer
-onnxconverter_common
-onnxruntime-directml
+torch-directml==0.1.13.1.dev230413
 
 #GUI
 customtkinter
-win32mica
+packaging
 
 #UTILS
+pyinstaller==5.13.2
 moviepy
 opencv-python-headless
-Nuitka==2.0.6
