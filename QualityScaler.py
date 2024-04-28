@@ -1,123 +1,40 @@
 
 # Standard library imports
 import sys
-from functools  import cache
-from time       import sleep
-from webbrowser import open as open_browser
-from subprocess import run  as subprocess_run
-from shutil     import rmtree as remove_directory
-from timeit     import default_timer as timer
+import threading
+import time
+import tkinter as tk
+import webbrowser
+from timeit import default_timer as timer
 
-from typing import Callable
-from threading import Thread
-from itertools import repeat
-from multiprocessing.pool import ThreadPool
-from multiprocessing import ( 
-    Process, 
-    Queue          as multiprocessing_Queue,
-    freeze_support as multiprocessing_freeze_support
-)
+import cv2
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.nn.init as init
+import torch_directml
+from customtkinter import (CTk, 
+                           CTkButton, 
+                           CTkEntry, 
+                           CTkFont, 
+                           CTkImage,
+                           CTkLabel, 
+                           CTkOptionMenu, 
+                           CTkScrollableFrame,
+                           filedialog, 
+                           set_appearance_mode,
+                           set_default_color_theme)
+from moviepy.editor import VideoFileClip
+from moviepy.video.io import ImageSequenceClip
+from PIL import Image
 
-from os import (
-    sep       as os_separator,
-    devnull   as os_devnull,
-    environ   as os_environ,
-    cpu_count as os_cpu_count,
-    makedirs  as os_makedirs,
-)
 
-from os.path import (
-    basename as os_path_basename,
-    dirname  as os_path_dirname,
-    abspath  as os_path_abspath,
-    join     as os_path_join,
-    exists   as os_path_exists,
-    splitext as os_path_splitext
-)
+app_name  = "QualityScaler"
+version   = "2.5"
 
-# Third-party library imports
-from PIL.Image import (
-    open      as pillow_image_open,
-    fromarray as pillow_image_fromarray
-)
-
-from moviepy.editor import VideoFileClip 
-from moviepy.video.io import ImageSequenceClip 
-
-from onnx import ( 
-    load as onnx_load 
-) 
-from onnxoptimizer import (
-    optimize as onnxoptimizer_optimize
-)
-from onnxconverter_common import (
-    float16 as onnx_converter_float16
-) 
-from onnxruntime import (
-    InferenceSession as onnxruntime_inferenceSession 
-)
-
-from cv2 import (
-    CAP_PROP_FPS,
-    CAP_PROP_FRAME_COUNT,
-    CAP_PROP_FRAME_HEIGHT,
-    CAP_PROP_FRAME_WIDTH,
-    COLOR_BGR2RGB,
-    COLOR_GRAY2RGB,
-    COLOR_RGB2BGRA,
-    COLOR_RGB2GRAY,
-    IMREAD_UNCHANGED,
-    INTER_AREA,
-    INTER_CUBIC,
-    VideoCapture as opencv_VideoCapture,
-    cvtColor     as opencv_cvtColor,
-    imdecode     as opencv_imdecode,
-    imencode     as opencv_imencode,
-    addWeighted  as opencv_addWeighted,
-    cvtColor     as opencv_cvtColor,
-    resize       as opencv_resize,
-)
-
-from numpy import (
-    ndarray           as numpy_ndarray,
-    ascontiguousarray as numpy_ascontiguousarray,
-    frombuffer        as numpy_frombuffer,
-    concatenate       as numpy_concatenate, 
-    transpose         as numpy_transpose,
-    full              as numpy_full, 
-    zeros             as numpy_zeros, 
-    expand_dims       as numpy_expand_dims,
-    squeeze           as numpy_squeeze,
-    clip              as numpy_clip,
-    mean              as numpy_mean,
-    max               as numpy_max, 
-    float32,
-    uint8
-)
-
-# GUI imports
-from tkinter import StringVar
-from tkinter import DISABLED
-from customtkinter import (
-    CTk,
-    CTkButton,
-    CTkEntry,
-    CTkFont,
-    CTkImage,
-    CTkLabel,
-    CTkOptionMenu,
-    CTkScrollableFrame,
-    CTkToplevel,
-    filedialog,
-    set_appearance_mode,
-    set_default_color_theme,
-)
-
-if sys.stdout is None: sys.stdout = open(os_devnull, "w")
-if sys.stderr is None: sys.stderr = open(os_devnull, "w")
-
-githubme   = "https://github.com/Djdefrag/QualityScaler"
-telegramme = "https://linktr.ee/j3ngystudio"
+githubme    = "https://github.com/Djdefrag/QualityScaler"
+telegramme  = "https://linktr.ee/j3ngystudio"
 
 app_name = "QualityScaler"
 version  = "3.4"
@@ -1966,13 +1883,18 @@ def show_error_message(exception: str) -> None:
         option_list = [messageBox_text]
     )
 
+def drop_files_action(event):
+    paths = window.tk.splitlist(event.data)
+    push_files(paths)
+
 def open_files_action():
-    info_message.set("Selecting files")
+    info_message.set("Selecting files...")
 
-    uploaded_files_list    = list(filedialog.askopenfilenames())
-    uploaded_files_counter = len(uploaded_files_list)
+def push_files(files):
+    info_message.set("Checking files...")
+    uploaded_files_counter = len(files)
 
-    supported_files_list    = check_supported_selected_files(uploaded_files_list)
+    supported_files_list    = check_supported_selected_files(files)
     supported_files_counter = len(supported_files_list)
     
     print("> Uploaded files: " + str(uploaded_files_counter) + " => Supported files: " + str(supported_files_counter))
@@ -2241,77 +2163,42 @@ def open_info_video_extension():
         "\n MP4 (x264)\n" + 
         "   • produces well compressed video using x264 codec\n",
 
-        "\n MP4 (x265)\n" + 
-        "   • produces well compressed video using x265 codec\n",
+ • .mp4  | produces good quality and well compressed video
+ • .avi  | produces the highest quality video
+ • .webm | produces low quality but light video"""
 
-        "\n AVI\n" + 
-        "   • produces the highest quality video\n" +
-        "   • the video produced can also be of large size\n"
-    ]
+    tk.messagebox.showinfo(title = 'Video output', message = info)    
 
-    CTkMessageBox(
-        messageType = "info",
-        title = "Video output",
-        subtitle = "This widget allows to choose the extension of the upscaled video",
-        default_value = default_video_extension,
-        option_list = option_list
-    )
+def open_info_interpolation():
+    info = """This widget allows you to choose interpolating 
+the upscaled image/frame with the original image/frame.
 
-def open_info_vram_limiter():
-    option_list = [
-        " It is important to enter the correct value according to the VRAM of selected GPU ",
-        " Selecting a value greater than the actual amount of GPU VRAM may result in upscale failure",
-        " For integrated GPUs (Intel-HD series • Vega 3,5,7) - select 2 GB",
-    ]
+[ INTERPOLATION ]
+ • Interpolation is intended as, the fusion of the original 
+   image with the one produced by the AI
+ • Allows to increase the quality of the final result, 
+   especially when using the tilling/merging function.
+ • Allows to increase the quality of the final result at low 
+   "Input resolution %" values (e.g. <50%)."""
 
-    CTkMessageBox(
-        messageType = "info",
-        title       = "GPU Vram (GB)",
-        subtitle    = "This widget allows to set a limit on the GPU VRAM memory usage",
-        default_value = default_VRAM_limiter,
-        option_list   = option_list
-    )
-
-def open_info_input_resolution():
-    option_list = [
-        " A high value (>70%) will create high quality photos/videos but will be slower",
-        " While a low value (<40%) will create good quality photos/videos but will much faster",
-
-        " \n For example, for a 1080p (1920x1080) image/video\n" + 
-        " • Input resolution 25% => input to AI 270p (480x270)\n" +
-        " • Input resolution 50% => input to AI 540p (960x540)\n" + 
-        " • Input resolution 75% => input to AI 810p (1440x810)\n" + 
-        " • Input resolution 100% => input to AI 1080p (1920x1080) \n",
-    ]
-
-    CTkMessageBox(
-        messageType = "info",
-        title       = "Input resolution %",
-        subtitle    = "This widget allows to choose the resolution input to the AI",
-        default_value = default_resize_factor,
-        option_list   = option_list
-    )
-
-def open_info_cpu():
-    option_list = [
-        " When possible the app will use the number of cpus selected",
-
-        "\n Currently this value is used for: \n" +
-        "  • video frames extraction \n" +
-        "  • video encoding \n",
-    ]
-
-    CTkMessageBox(
-        messageType = "info",
-        title       = "Cpu number",
-        subtitle    = "This widget allows to choose how many cpus to devote to the app",
-        default_value = default_cpu_number,
-        option_list   = option_list
-    )
+    tk.messagebox.showinfo(title = 'Video output', message = info) 
 
 
 
 # GUI place functions ---------------------------
+        
+def place_up_background():
+    up_background = CTkLabel(master  = window, 
+                            text    = "",
+                            fg_color = dark_color,
+                            font     = bold12,
+                            anchor   = "w")
+    
+    up_background.place(relx = 0.5, 
+                        rely = 0.0, 
+                        relwidth = 1.0,  
+                        relheight = 1.0,  
+                        anchor = tk.CENTER)
 
 def place_github_button():
     git_button = CTkButton(master  = window, 
@@ -2502,23 +2389,18 @@ def place_stop_button():
     stop_button.place(relx = column2_x, rely = row4_y, anchor = "center")
 
 def place_upscale_button(): 
-    upscale_button = create_active_button(
-        command = upscale_button_command,
-        text    = "UPSCALE",
-        icon    = upscale_icon,
-        width   = 140,
-        height  = 30
-    )
-    upscale_button.place(relx = column2_x, rely = row4_y, anchor = "center")
+    upscale_button = CTkButton(master    = window, 
+                                width      = 140,
+                                height     = 30,
+                                fg_color   = "#282828",
+                                text_color = "#E0E0E0",
+                                text       = "UPSCALE", 
+                                font       = bold11,
+                                image      = play_icon,
+                                command    = upscale_button_command)
+    upscale_button.place(relx = 0.79, rely = row3_y, anchor = tk.CENTER)
    
 
-
-# Main functions ---------------------------
-
-def on_app_close() -> None:
-    window.grab_release()
-    window.destroy()
-    stop_upscale_process()
 
 class App():
     def __init__(self, window):
@@ -2560,17 +2442,7 @@ if __name__ == "__main__":
     set_appearance_mode("Dark")
     set_default_color_theme("dark-blue")
 
-    ffmpeg_exe_path = find_by_relative_path(f"Assets{os_separator}ffmpeg_7.exe")
-    if os_path_exists(ffmpeg_exe_path):
-        os_environ["IMAGEIO_FFMPEG_EXE"] = ffmpeg_exe_path
-
     window = CTk() 
-
-    info_message            = StringVar()
-    selected_output_path    = StringVar()
-    selected_resize_factor  = StringVar()
-    selected_VRAM_limiter   = StringVar()
-    selected_cpu_number     = StringVar()
 
     global selected_file_list
     global selected_AI_model

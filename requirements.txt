@@ -6,6 +6,7 @@ onnxruntime-directml
 
 #GUI
 customtkinter
+win32mica
 
 #UTILS
 moviepy
